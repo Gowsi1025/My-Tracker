@@ -1,5 +1,5 @@
 // Offline support: network first, falls back to the saved copy when offline.
-const C = 'mytasks-v2';
+const C = 'mytasks-v3';
 const SHELL = ['./', 'index.html', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', e => {
