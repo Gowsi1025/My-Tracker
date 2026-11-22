@@ -88,6 +88,24 @@ header h1{margin:0;font-size:22px}
 #auth a{font-size:13px;color:var(--accent)}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222;color:#fff;padding:9px 16px;border-radius:20px;font-size:13px;z-index:99;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.on{opacity:1}
+#search{margin-left:auto;padding:8px 12px;border:1px solid var(--line);border-radius:20px;background:var(--panel);outline:none;width:190px;max-width:45vw}
+#search:focus{border-color:var(--accent)}
+.cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.cal-h button{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 14px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal .wd{text-align:center;font-size:11px;color:var(--muted);padding:4px 0}
+.cal .cd{aspect-ratio:1;max-height:70px;border:1px solid var(--line);background:var(--panel);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0;font-size:13px}
+.cal .cd.td{border-color:var(--accent);color:var(--accent);font-weight:700}
+.cal .cd.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
+.cal .cd i{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.cal .cd.sel i{background:#fff}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+.stat b{display:block;font-size:26px}
+.stat span{color:var(--muted);font-size:12px}
+.bars{display:flex;align-items:flex-end;gap:8px;height:140px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+.bar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:11px;color:var(--muted);gap:4px}
+.bar div{width:100%;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
 @media(max-width:799px){
  #side{position:fixed;inset:0 auto 0 0;z-index:30;transform:translateX(-100%);transition:transform .2s}
  #side.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.35)}
@@ -100,7 +118,7 @@ header h1{margin:0;font-size:22px}
 <div id="app">
  <aside id="side"></aside>
  <main>
-  <header><button id="menu" aria-label="Menu">☰</button><h1 id="title"></h1></header>
+  <header><button id="menu" aria-label="Menu">☰</button><h1 id="title"></h1><input id="search" type="search" placeholder="Search tasks…" autocomplete="off"></header>
   <div id="quick"><input id="q" placeholder='Add task… e.g. "Pay rent tomorrow #bills !high ~monthly"' autocomplete="off"><button class="primary" id="qadd">Add</button></div>
   <div id="content"></div>
  </main>
@@ -122,27 +140,17 @@ header h1{margin:0;font-size:22px}
 </div>
 <div id="toast"></div>
 
+<script src="config.js"></script>
 <script>
-/* ============ SETUP: paste your Firebase web config here ============
+/* ============ SETUP: your Firebase config now lives in config.js ============
    Leave as null to use the app in local-only mode (no sync).
    Example:
    const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCHz_HYNYR2EESyapCUf-h0p6SzKvxKgos",
-  authDomain: "my-tracker-73aa5.firebaseapp.com",
-  projectId: "my-tracker-73aa5",
-  storageBucket: "my-tracker-73aa5.firebasestorage.app",
-  messagingSenderId: "145407667240",
-  appId: "1:145407667240:web:ae80f5cb0ed9dd9fd2591d"
-};
+     apiKey: "...", authDomain: "...", projectId: "...",
+     storageBucket: "...", messagingSenderId: "...", appId: "..."
+   };
 */
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCHz_HYNYR2EESyapCUf-h0p6SzKvxKgos",
-  authDomain: "my-tracker-73aa5.firebaseapp.com",
-  projectId: "my-tracker-73aa5",
-  storageBucket: "my-tracker-73aa5.firebasestorage.app",
-  messagingSenderId: "145407667240",
-  appId: "1:145407667240:web:ae80f5cb0ed9dd9fd2591d"
-};
+const FIREBASE_CONFIG = window.FIREBASE_CONFIG||null;
 /* ==================================================================== */
 
 const $=s=>document.querySelector(s);
@@ -162,6 +170,7 @@ const syncErr=e=>toast('Sync error: '+(e&&e.code||e));
 const S={tasks:{},habits:{},lists:['Inbox'],view:{type:'smart',id:'today'}};
 const Auth={user:null};
 let M=null; // task being edited
+let searchQ='',calMonth=today().slice(0,7)+'-01',calSel=today();
 const KEY='mytasks_v1';
 
 const DB={
@@ -179,16 +188,20 @@ const DB={
 function stepDue(d,r){return r==='daily'?addDays(d,1):r==='weekly'?addDays(d,7):addMonths(d,1)}
 function nextDue(t){let d=t.due||today();do{d=stepDue(d,t.repeat)}while(d<=today());return d}
 function toggle(id){const t=S.tasks[id];if(!t)return;
- if(!t.done&&t.repeat){t.due=nextDue(t);t.subtasks=(t.subtasks||[]).map(s=>({...s,d:false}));toast('Next: '+dueLabel(t.due))}
+ if(!t.done&&t.repeat){t.hist=[...(t.hist||[]),Date.now()];t.due=nextDue(t);t.subtasks=(t.subtasks||[]).map(s=>({...s,d:false}));toast('Next: '+dueLabel(t.due))}
  else{t.done=!t.done;t.doneAt=t.done?Date.now():0}
  DB.task(t)}
 function parseQuick(txt){
- let title=txt,due='',priority=0,tags=[],repeat='';
+ let title=txt,due='',priority=0,tags=[],repeat='',time='';
  title=title.replace(/(^|\s)#([\w-]+)/g,(m,a,g)=>{tags.push(g);return a});
  title=title.replace(/(^|\s)!(high|h|3|medium|med|m|2|low|l|1)\b/gi,(m,a,p)=>{priority={h:3,high:3,'3':3,m:2,med:2,medium:2,'2':2,l:1,low:1,'1':1}[p.toLowerCase()];return a});
  title=title.replace(/(^|\s)~(daily|weekly|monthly)\b/gi,(m,a,r)=>{repeat=r.toLowerCase();return a});
  title=title.replace(/(^|\s)(today|tomorrow)\b/i,(m,a,w)=>{due=w.toLowerCase()==='today'?today():addDays(today(),1);return a});
- return{title:title.replace(/\s+/g,' ').trim(),due,priority,tags,repeat};
+ title=title.replace(/(^|\s)at\s(\d{1,2})(?::(\d{2}))?\s?(am|pm)?\b/i,(m,a,h,mi,ap)=>{h=+h;mi=+(mi||0);
+  if(ap){ap=ap.toLowerCase();if(h<1||h>12)return m;if(ap==='pm'&&h<12)h+=12;if(ap==='am'&&h===12)h=0}
+  if(h>23||mi>59)return m;time=pad(h)+':'+pad(mi);return a});
+ if(time&&!due)due=today();
+ return{title:title.replace(/\s+/g,' ').trim(),due,priority,tags,repeat,time};
 }
 function quickAdd(){
  const inp=$('#q'),txt=inp.value.trim();if(!txt)return;
@@ -196,15 +209,18 @@ function quickAdd(){
  const v=S.view;
  if(!p.due&&v.type==='smart'&&v.id==='today')p.due=today();
  if(v.type==='tag'&&!p.tags.includes(v.id))p.tags.push(v.id);
- DB.task({id:uid(),title:p.title,notes:'',due:p.due,priority:p.priority,list:v.type==='list'?v.id:'Inbox',tags:p.tags,subtasks:[],repeat:p.repeat,done:false,doneAt:0,created:Date.now()});
+ DB.task({id:uid(),title:p.title,notes:'',due:p.due,time:p.time||'',priority:p.priority,list:v.type==='list'?v.id:'Inbox',tags:p.tags,subtasks:[],repeat:p.repeat,done:false,doneAt:0,created:Date.now()});
  inp.value='';
 }
 function cmpPri(a,b){return b.priority-a.priority||(a.due||'9')<(b.due||'9')?-1:(a.due||'9')>(b.due||'9')?1:a.created-b.created}
 function cmp(a,b){
- if(S.view.id==='upcoming'){const x=a.due||'9',y=b.due||'9';return x<y?-1:x>y?1:b.priority-a.priority||a.created-b.created}
- return b.priority-a.priority||((a.due||'9')<(b.due||'9')?-1:(a.due||'9')>(b.due||'9')?1:a.created-b.created)}
+ const x=(a.due||'9')+(a.time||'99'),y=(b.due||'9')+(b.time||'99');
+ if(S.view.id==='upcoming')return x<y?-1:x>y?1:b.priority-a.priority||a.created-b.created;
+ return b.priority-a.priority||(x<y?-1:x>y?1:a.created-b.created)}
 function visible(){
  const T=Object.values(S.tasks),td=today(),{type,id}=S.view;let r=[];
+ if(searchQ){const q=searchQ.toLowerCase();
+  return T.filter(t=>(t.title+' '+(t.notes||'')+' '+(t.tags||[]).join(' ')+' '+(t.subtasks||[]).map(s=>s.t).join(' ')).toLowerCase().includes(q)).sort(cmp)}
  if(type==='smart'){
   if(id==='today')r=T.filter(t=>!t.done&&t.due&&t.due<=td);
   else if(id==='upcoming')r=T.filter(t=>!t.done&&t.due>td);
@@ -219,7 +235,7 @@ function visible(){
 function titleOf(v){
  if(v.type==='smart')return{today:'Today',upcoming:'Upcoming',all:'All tasks',completed:'Completed'}[v.id];
  if(v.type==='list')return v.id;if(v.type==='tag')return'#'+v.id;
- return{habits:'Habits',focus:'Focus timer'}[v.id];
+ return{habits:'Habits',focus:'Focus timer',calendar:'Calendar',stats:'Stats'}[v.id];
 }
 function renderSide(){
  const open=Object.values(S.tasks).filter(t=>!t.done),td=today();
@@ -228,8 +244,8 @@ function renderSide(){
  let h=`<div class="brand">✔ MyTasks</div>`+it('smart','today','Today','☀️',cnt.today)+it('smart','upcoming','Upcoming','📅',cnt.upcoming)+it('smart','all','All tasks','📥',cnt.all)+it('smart','completed','Completed','✅',0);
  h+=`<div class="sec">Lists <button data-act="addlist" title="New list">＋</button></div>`;
  S.lists.forEach(l=>{h+=it('list',l,l,'📁',open.filter(t=>t.list===l).length,l==='Inbox'?'':`<button class="x" data-act="dellist" data-list="${esc(l)}" title="Delete list">×</button>`)});
- h+=`<div class="sec">Tools</div>`+it('tool','habits','Habits','🔁',0)+it('tool','focus','Focus timer','🍅',0);
- h+=`<div class="foot"><button data-act="theme">🌓 Toggle dark mode</button>`+
+ h+=`<div class="sec">Tools</div>`+it('tool','habits','Habits','🔁',0)+it('tool','focus','Focus timer','🍅',0)+it('tool','calendar','Calendar','🗓️',0)+it('tool','stats','Stats','📊',0);
+ h+=`<div class="foot"><button data-act="theme">🌓 Toggle dark mode</button><button data-act="notif">🔔 Enable reminders</button><button data-act="export">⬇️ Export backup</button><button data-act="import">⬆️ Import backup</button>`+
   (Auth.user?`<div>${esc(Auth.user.email)}</div><button data-act="signout">Sign out</button>`:`<div>${FIREBASE_CONFIG?'Not signed in':'Local only — not synced'}</div>`)+`</div>`;
  $('#side').innerHTML=h;
 }
@@ -238,7 +254,7 @@ function row(t){
  return `<div class="task p${t.priority} ${t.done?'done':''}" data-id="${t.id}">
  <button class="chk" data-act="toggle" aria-label="Complete"></button>
  <div class="tbody"><div class="ttitle">${esc(t.title)}</div><div class="tmeta">`+
- (t.due?`<span class="${t.due<td&&!t.done?'over':''}">${t.due<td&&!t.done?'Overdue · ':''}${dueLabel(t.due)}</span>`:'')+
+ (t.due?`<span class="${t.due<td&&!t.done?'over':''}">${t.due<td&&!t.done?'Overdue · ':''}${dueLabel(t.due)}${t.time?' · '+t.time:''}</span>`:'')+
  (t.repeat?`<span>↻ ${t.repeat}</span>`:'')+(subs.length?`<span>☑ ${sd}/${subs.length}</span>`:'')+
  `<span>${esc(t.list)}</span>`+(t.tags||[]).map(g=>`<span class="tag" data-act="tag" data-tag="${esc(g)}">#${esc(g)}</span>`).join('')+
  `</div></div></div>`;
@@ -269,9 +285,11 @@ function renderFocus(){
  `</div><div id="f-time">${fmt(F.left)}</div><div class="row"><button class="primary" id="f-start" data-act="fstart">${F.run?'Pause':'Start'}</button><button data-act="freset">Reset</button></div><p style="color:var(--muted);margin-top:24px">Focus sessions today: <b>${sessions()}</b></p></div>`;
 }
 function renderMain(){
- const v=S.view;$('#title').textContent=titleOf(v);
- $('#quick').hidden=!(v.type==='list'||v.type==='tag'||(v.type==='smart'&&v.id!=='completed'));
- if(v.type==='tool')v.id==='habits'?renderHabits():renderFocus();else renderTasks();
+ const v=S.view;$('#title').textContent=searchQ?'Search':titleOf(v);
+ $('#quick').hidden=!!searchQ||!(v.type==='list'||v.type==='tag'||(v.type==='smart'&&v.id!=='completed'));
+ if(searchQ)renderTasks();
+ else if(v.type==='tool')({habits:renderHabits,focus:renderFocus,calendar:renderCalendar,stats:renderStats})[v.id]();
+ else renderTasks();
 }
 function render(){renderSide();renderMain()}
 
@@ -295,7 +313,7 @@ function openEdit(id){if(!S.tasks[id])return;M=JSON.parse(JSON.stringify(S.tasks
 function closeM(){M=null;$('#modal').hidden=true}
 function collectM(){
  if(!M||!$('#m-title'))return;
- M.title=$('#m-title').value;M.notes=$('#m-notes').value;M.due=$('#m-due').value;
+ M.title=$('#m-title').value;M.notes=$('#m-notes').value;M.due=$('#m-due').value;M.time=$('#m-time').value;
  M.priority=Number($('#m-pri').value);M.list=$('#m-list').value;M.repeat=$('#m-rep').value;
  M.tags=$('#m-tags').value.split(',').map(s=>s.trim().replace(/^#/,'')).filter(Boolean);
  M.subtasks=[...document.querySelectorAll('#m-subs .sub')].map(r=>({t:r.querySelector('.subt').value.trim(),d:r.querySelector('input[type=checkbox]').checked})).filter(s=>s.t);
@@ -308,6 +326,7 @@ function renderModal(){
  <textarea id="m-notes" placeholder="Notes">${esc(M.notes||'')}</textarea>
  <div class="grid">
   <label>Due date<input type="date" id="m-due" value="${esc(M.due||'')}"></label>
+  <label>Time (reminder)<input type="time" id="m-time" value="${esc(M.time||'')}"></label>
   <label>Priority<select id="m-pri">${[['0','None'],['1','Low'],['2','Medium'],['3','High']].map(([v,l])=>opt(v,l,String(M.priority)===v)).join('')}</select></label>
   <label>List<select id="m-list">${lists.map(l=>opt(l,l,l===M.list)).join('')}</select></label>
   <label>Repeat<select id="m-rep">${[['','Never'],['daily','Daily'],['weekly','Weekly'],['monthly','Monthly']].map(([v,l])=>opt(v,l,(M.repeat||'')===v)).join('')}</select></label>
@@ -319,6 +338,79 @@ function renderModal(){
  <div class="actions"><button class="danger" data-m="del">Delete</button><span></span><button data-m="cancel">Cancel</button><button class="primary" data-m="save">Save</button></div></div>`;
 }
 function saveM(){collectM();if(!M.title.trim()){toast('Title required');return}M.title=M.title.trim();DB.task(M);closeM()}
+
+/* ---------- calendar ---------- */
+function renderCalendar(){
+ const first=new Date(calMonth+'T00:00:00'),y=first.getFullYear(),mo=first.getMonth();
+ const start=(first.getDay()+6)%7,dim=new Date(y,mo+1,0).getDate();
+ const byDay={};Object.values(S.tasks).forEach(t=>{if(t.due&&!t.done)byDay[t.due]=(byDay[t.due]||0)+1});
+ let h=`<div class="cal-h"><button data-act="calprev" aria-label="Previous month">‹</button><b>${first.toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</b><button data-act="calnext" aria-label="Next month">›</button></div><div class="cal">`+
+  ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="wd">${d}</div>`).join('');
+ for(let i=0;i<start;i++)h+='<div></div>';
+ for(let d=1;d<=dim;d++){const ds=`${y}-${pad(mo+1)}-${pad(d)}`;
+  h+=`<button class="cd ${ds===today()?'td':''} ${ds===calSel?'sel':''}" data-act="calday" data-date="${ds}">${d}${byDay[ds]?'<i></i>':''}</button>`}
+ h+='</div>';
+ const list=Object.values(S.tasks).filter(t=>t.due===calSel).sort(cmp);
+ h+=`<div class="gh">${dueLabel(calSel)}</div>`+(list.length?list.map(row).join(''):'<div class="empty" style="padding:20px">No tasks this day.</div>')+
+  `<div style="display:flex;gap:8px;margin-top:8px"><input id="cal-new" placeholder="Add task on this day" style="flex:1;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel);outline:none"><button class="primary" data-act="caladd">Add</button></div>`;
+ $('#content').innerHTML=h;
+}
+function calAdd(){const i=$('#cal-new');if(!i)return;const p=parseQuick(i.value.trim());if(!p.title){toast('Add a title');return}
+ DB.task({id:uid(),title:p.title,notes:'',due:calSel,time:p.time||'',priority:p.priority,list:'Inbox',tags:p.tags,subtasks:[],repeat:p.repeat,done:false,doneAt:0,created:Date.now()})}
+
+/* ---------- stats ---------- */
+function renderStats(){
+ const T=Object.values(S.tasks),td=today(),open=T.filter(t=>!t.done);
+ const doneOn=d=>T.reduce((n,t)=>n+(t.done&&t.doneAt&&ymd(new Date(t.doneAt))===d?1:0)+(t.hist||[]).filter(ts=>ymd(new Date(ts))===d).length,0);
+ const days=[...Array(7)].map((_,i)=>addDays(td,i-6)),counts=days.map(doneOn),max=Math.max(1,...counts);
+ const best=Math.max(0,...Object.values(S.habits).map(streak));
+ const card=(n,l)=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`;
+ $('#content').innerHTML=`<div class="stats">`+card(open.length,'Open tasks')+card(open.filter(t=>t.due&&t.due<td).length,'Overdue')+card(counts[6],'Done today')+
+  card(counts.reduce((a,b)=>a+b,0),'Done in last 7 days')+card(best,'Best habit streak 🔥')+card(sessions(),'Focus sessions today')+
+  `</div><div class="gh">Completed per day</div><div class="bars">`+
+  days.map((d,i)=>`<div class="bar">${counts[i]}<div style="height:${Math.round(counts[i]/max*70)}px"></div>${new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'})}</div>`).join('')+`</div>`;
+}
+
+/* ---------- backup ---------- */
+function exportData(){
+ const data=JSON.stringify({tasks:Object.values(S.tasks),habits:Object.values(S.habits),lists:S.lists},null,1);
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));
+ a.download='mytasks-backup-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+function importData(){
+ const i=document.createElement('input');i.type='file';i.accept='.json,application/json';
+ i.onchange=()=>{const f=i.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{const j=JSON.parse(r.result);let n=0;
+   (j.lists||[]).forEach(l=>{if(typeof l==='string'&&l&&!S.lists.includes(l))S.lists.push(l)});
+   (j.tasks||[]).forEach(t=>{if(t&&t.id&&t.title){t.list=t.list||'Inbox';if(!S.lists.includes(t.list))S.lists.push(t.list);
+    t.priority=Number(t.priority)||0;t.created=t.created||Date.now();t.done=!!t.done;DB.task(t);n++}});
+   (j.habits||[]).forEach(h=>{if(h&&h.id&&h.name){h.log=h.log||{};h.created=h.created||Date.now();DB.habit(h)}});
+   DB.lists();toast('Imported '+n+' tasks')}catch{toast('Invalid backup file')}};
+  r.readAsText(f)};
+ i.click();
+}
+
+/* ---------- reminders (work while the app/tab is open) ---------- */
+function notify(title,body,tag){
+ const fb=()=>{try{new Notification(title,{body,tag})}catch{}};
+ if('serviceWorker' in navigator)navigator.serviceWorker.getRegistration().then(r=>r?r.showNotification(title,{body,tag,icon:'icon.svg'}):fb()).catch(fb);else fb();
+}
+function checkReminders(){
+ if(!('Notification' in window)||Notification.permission!=='granted')return;
+ const now=new Date(),td=ymd(now),nowMin=now.getHours()*60+now.getMinutes();
+ let seen={d:td,k:{}};try{const j=JSON.parse(localStorage.getItem('mytasks_seen')||'{}');if(j.d===td)seen=j}catch{}
+ let ch=false;
+ Object.values(S.tasks).forEach(t=>{
+  if(t.done||!t.time||t.due!==td)return;
+  const[h,m]=t.time.split(':').map(Number),diff=nowMin-(h*60+m);
+  if(diff<0||diff>10)return;
+  const k=t.id+t.time;if(seen.k[k])return;seen.k[k]=1;ch=true;
+  notify('⏰ '+t.title,'Due '+t.time,k);toast('⏰ '+t.title)});
+ if(ch)try{localStorage.setItem('mytasks_seen',JSON.stringify(seen))}catch{}
+}
+function clearSearch(){searchQ='';$('#search').value=''}
+$('#search').addEventListener('input',e=>{searchQ=e.target.value.trim();renderMain()});
 
 /* ---------- events ---------- */
 $('#qadd').onclick=quickAdd;
@@ -335,16 +427,25 @@ $('#side').addEventListener('click',e=>{
     S.lists=S.lists.filter(x=>x!==l);if(S.view.type==='list'&&S.view.id===l)S.view={type:'smart',id:'today'};DB.lists()}}
   else if(act==='theme'){const d=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=d;try{localStorage.setItem('mytasks_theme',d)}catch{}}
   else if(act==='signout'){Auth.out&&Auth.out()}
+  else if(act==='export'){exportData()}
+  else if(act==='import'){importData()}
+  else if(act==='notif'){
+   if(!('Notification' in window)){toast('Notifications not supported here')}
+   else Notification.requestPermission().then(p=>toast(p==='granted'?'Reminders on (works while the app is open)':'Permission denied'))}
   return}
  const g=e.target.closest('[data-go]');
- if(g){const s=g.dataset.go,i=s.indexOf(':');S.view={type:s.slice(0,i),id:s.slice(i+1)};$('#side').classList.remove('open');render()}
+ if(g){const s=g.dataset.go,i=s.indexOf(':');clearSearch();S.view={type:s.slice(0,i),id:s.slice(i+1)};$('#side').classList.remove('open');render()}
 });
 
 $('#content').addEventListener('click',e=>{
  const a=e.target.closest('[data-act]'),row=e.target.closest('.task');
  if(a){const act=a.dataset.act;
   if(act==='toggle'){toggle(row.dataset.id);return}
-  if(act==='tag'){S.view={type:'tag',id:a.dataset.tag};render();return}
+  if(act==='tag'){clearSearch();S.view={type:'tag',id:a.dataset.tag};render();return}
+  if(act==='calprev'){calMonth=addMonths(calMonth,-1);renderCalendar();return}
+  if(act==='calnext'){calMonth=addMonths(calMonth,1);renderCalendar();return}
+  if(act==='calday'){calSel=a.dataset.date;renderCalendar();return}
+  if(act==='caladd'){calAdd();return}
   if(act==='hadd')return addHabit();
   if(act==='hdel'){if(confirm('Delete this habit?'))DB.delHabit(a.dataset.id);return}
   if(act==='hday'){const h=S.habits[a.dataset.id];h.log=h.log||{};const d=a.dataset.date;if(h.log[d])delete h.log[d];else h.log[d]=true;DB.habit(h);return}
@@ -355,7 +456,7 @@ $('#content').addEventListener('click',e=>{
  if(row)openEdit(row.dataset.id);
 });
 function addHabit(){const i=$('#h-new');const n=i.value.trim();if(!n)return;DB.habit({id:uid(),name:n,log:{},created:Date.now()})}
-$('#content').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='h-new')addHabit()});
+$('#content').addEventListener('keydown',e=>{if(e.key!=='Enter')return;if(e.target.id==='h-new')addHabit();else if(e.target.id==='cal-new')calAdd()});
 
 $('#modal').addEventListener('click',e=>{
  if(e.target.id==='modal'){closeM();return}
@@ -409,6 +510,8 @@ async function initCloud(){
  let th=null;try{th=localStorage.getItem('mytasks_theme')}catch{}
  if(!th)th=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
  document.documentElement.dataset.theme=th;
+ if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+ setInterval(checkReminders,30000);
  if(!FIREBASE_CONFIG){DB.loadLocal();render();return}
  render();
  try{await initCloud()}catch(e){console.error(e);toast('Cloud failed — using local mode');DB.cloud=null;DB.loadLocal();render()}
