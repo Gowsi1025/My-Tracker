@@ -1,0 +1,12 @@
+{
+  "name": "MyTasks",
+  "short_name": "MyTasks",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#f6f7fb",
+  "theme_color": "#4772fa",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
